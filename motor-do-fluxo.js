@@ -1,6 +1,4 @@
 // ===== CONFIG =====
-// Troque para 'ERRO' para testar o outro caminho de cada ação
-// ===== CONFIG =====
 const TZ = 'America/Sao_Paulo';
 
 // Horário de funcionamento: [abre, fecha) em horas. 0 = domingo ... 6 = sábado
@@ -25,11 +23,27 @@ function dentroDoHorario() {
 
 // Cada ação devolve 'SUCESSO' ou 'ERRO'
 const ACOES = {
-  'validar-ad': () => 'SUCESSO',
+  'validar-ad': () => (vars.adOk ? 'SUCESSO' : 'ERRO'),
   'verifica-horario-de-funcionamento-do-sd': () => dentroDoHorario() ? 'SUCESSO' : 'ERRO',
   'desbloqueia-usuario-no-ad': () => 'SUCESSO',
 };
 const SESSAO_MIN = 1;
+
+async function consultarAD(login) {
+  if (!/^[a-zA-Z0-9._-]{1,32}$/.test(login)) return { ok: false };
+  try {
+    const r = await this.helpers.httpRequest({
+      method: 'GET',
+      url: 'http://host.docker.internal:8090/consulta',
+      qs: { login },
+      json: true,
+      timeout: 10000,
+    });
+    return { ok: !!r.ok, nome: r.nome || '' };
+  } catch (e) {
+    return { ok: false };
+  }
+}
 
 // ===== CSV =====
 function parseCSV(text) {
@@ -109,9 +123,12 @@ if (!s) {
   const row = steps[s.step];
   let prox;
   if (row.tipo === 'entrada') {
-    vars.login = input; vars.nome = input; // simulação do validar-ad
-    prox = row.opcoes['*'];
-  } else {
+  const ad = await consultarAD.call(this, input);
+  vars.login = input;
+  vars.adOk = ad.ok;
+  vars.nome = ad.ok ? ad.nome : '';
+  prox = row.opcoes['*'];
+} else {
     prox = row.opcoes[input];
   }
   if (!prox) { out.push('Opção inválida.'); step = avancar(s.step); }
@@ -122,3 +139,4 @@ if (step) store.sessoes[number] = { step, vars, ts: agora };
 else delete store.sessoes[number];
 
 return out.map(text => ({ json: { number, text } }));
+
